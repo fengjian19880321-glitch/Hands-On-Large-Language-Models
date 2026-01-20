@@ -40,9 +40,8 @@ from matplotlib import font_manager as fm
 
 
 DEFAULT_QUERY = (
-    '(ecommerce OR "e-commerce" OR retail OR shopping OR shopify OR woocommerce) '
-    '(llm OR "large language model" OR "chatgpt" OR "gpt" OR "rag" OR "langchain") '
-    "in:readme in:description in:topics"
+    '(ecommerce OR "e-commerce" OR shopify OR woocommerce OR retail OR shopping) '
+    "llm in:readme in:description"
 )
 
 GITHUB_API = "https://api.github.com"
