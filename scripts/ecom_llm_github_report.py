@@ -479,6 +479,15 @@ def wrap_text(text: str, width: int) -> List[str]:
     return lines
 
 
+def sanitize_text(text: str) -> str:
+    if not text:
+        return ""
+    # Remove common emoji and private-use glyphs that CJK fonts may not cover.
+    text = text.replace("\uf8ff", "")
+    text = re.sub(r"[\U00010000-\U0010FFFF]", "", text)
+    return text
+
+
 def set_cjk_font(font_path: str, download_font: bool) -> None:
     if font_path and os.path.exists(font_path):
         fp = fm.FontProperties(fname=font_path)
@@ -591,7 +600,7 @@ def render_toc_page(fig: plt.Figure, items: List[str], page_start: int) -> None:
     for idx, line in enumerate(items):
         if y < 0.08:
             break
-        fig.text(0.08, y, f"{page_start + idx:03d}. {line}", fontsize=9)
+        fig.text(0.08, y, f"{page_start + idx:03d}. {sanitize_text(line)}", fontsize=9)
         y -= line_h
 
 
@@ -603,18 +612,18 @@ def render_project_page_one(
 ) -> None:
     fig.set_facecolor("white")
     y = 0.95
-    title = f"{repo['full_name']}  ★{repo.get('stargazers_count', 0)}"
+    title = f"{sanitize_text(repo['full_name'])}  ★{repo.get('stargazers_count', 0)}"
     fig.text(0.08, y, title, fontsize=16, fontweight="bold", va="top")
     y -= 0.05
-    fig.text(0.08, y, repo.get("html_url", ""), fontsize=9, va="top")
+    fig.text(0.08, y, sanitize_text(repo.get("html_url", "")), fontsize=9, va="top")
     y -= 0.04
-    desc = repo.get("description") or "无公开描述"
+    desc = sanitize_text(repo.get("description") or "无公开描述")
     y = draw_paragraph(
         fig,
         0.08,
         y,
         "1. 项目名称",
-        repo.get("name", ""),
+        sanitize_text(repo.get("name", "")),
         width=60,
         title_size=12,
         body_size=10,
