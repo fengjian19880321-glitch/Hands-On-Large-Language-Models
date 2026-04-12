@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>贪吃蛇游戏</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #1a1a2e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            color: #eee;
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            color: #4ecca3;
+            text-shadow: 0 0 20px #4ecca3;
+            letter-spacing: 4px;
+        }
+
+        .scoreboard {
+            display: flex;
+            gap: 40px;
+            font-size: 1.1rem;
+        }
+
+        .score-item {
+            text-align: center;
+        }
+
+        .score-label {
+            color: #888;
+            font-size: 0.8rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .score-value {
+            color: #4ecca3;
+            font-size: 1.8rem;
+            font-weight: bold;
+        }
+
+        #gameCanvas {
+            border: 2px solid #4ecca3;
+            box-shadow: 0 0 30px rgba(78, 204, 163, 0.3);
+            display: block;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            background: transparent;
+            border: 2px solid #4ecca3;
+            color: #4ecca3;
+            padding: 10px 25px;
+            font-size: 1rem;
+            font-family: inherit;
+            cursor: pointer;
+            letter-spacing: 2px;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: #4ecca3;
+            color: #1a1a2e;
+        }
+
+        .difficulty {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .difficulty label {
+            color: #888;
+            font-size: 0.9rem;
+        }
+
+        .difficulty select {
+            background: #1a1a2e;
+            border: 2px solid #4ecca3;
+            color: #4ecca3;
+            padding: 5px 10px;
+            font-family: inherit;
+            cursor: pointer;
+        }
+
+        .instructions {
+            color: #555;
+            font-size: 0.8rem;
+            text-align: center;
+            line-height: 1.6;
+        }
+
+        #overlay {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(26, 26, 46, 0.92);
+            gap: 20px;
+            pointer-events: none;
+        }
+
+        #overlay.hidden {
+            display: none;
+        }
+
+        #overlay h2 {
+            font-size: 2rem;
+            color: #4ecca3;
+        }
+
+        #overlay p {
+            color: #aaa;
+        }
+
+        .canvas-wrapper {
+            position: relative;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>贪吃蛇</h1>
+
+        <div class="scoreboard">
+            <div class="score-item">
+                <div class="score-label">得分</div>
+                <div class="score-value" id="score">0</div>
+            </div>
+            <div class="score-item">
+                <div class="score-label">最高分</div>
+                <div class="score-value" id="highScore">0</div>
+            </div>
+            <div class="score-item">
+                <div class="score-label">等级</div>
+                <div class="score-value" id="level">1</div>
+            </div>
+        </div>
+
+        <div class="canvas-wrapper">
+            <canvas id="gameCanvas" width="400" height="400"></canvas>
+            <div id="overlay">
+                <h2 id="overlayTitle">贪吃蛇</h2>
+                <p id="overlayMsg">按空格键或点击开始游戏</p>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="startBtn">开始游戏</button>
+            <button id="pauseBtn" disabled>暂停</button>
+            <div class="difficulty">
+                <label>难度：</label>
+                <select id="diffSelect">
+                    <option value="150">简单</option>
+                    <option value="100" selected>普通</option>
+                    <option value="65">困难</option>
+                    <option value="40">极难</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="instructions">
+            方向键 / WASD 控制移动 &nbsp;|&nbsp; 空格键 暂停/继续
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const overlay = document.getElementById('overlay');
+        const overlayTitle = document.getElementById('overlayTitle');
+        const overlayMsg = document.getElementById('overlayMsg');
+        const scoreEl = document.getElementById('score');
+        const highScoreEl = document.getElementById('highScore');
+        const levelEl = document.getElementById('level');
+        const startBtn = document.getElementById('startBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const diffSelect = document.getElementById('diffSelect');
+
+        const GRID = 20;
+        const COLS = canvas.width / GRID;
+        const ROWS = canvas.height / GRID;
+
+        // Resize overlay to match canvas
+        overlay.style.width = canvas.width + 'px';
+        overlay.style.height = canvas.height + 'px';
+
+        let snake, direction, nextDirection, food, bonusFood;
+        let score, highScore, level;
+        let gameLoop, running, paused;
+        let baseSpeed, currentSpeed;
+        let frameCount;
+
+        highScore = parseInt(localStorage.getItem('snakeHighScore')) || 0;
+        highScoreEl.textContent = highScore;
+
+        const COLORS = {
+            snakeHead: '#4ecca3',
+            snakeBody: '#38b2ac',
+            snakeTail: '#2c9e91',
+            food: '#e53e3e',
+            bonusFood: '#f6ad55',
+            grid: '#16213e',
+            gridLine: '#1e2a4a',
+        };
+
+        function initGame() {
+            snake = [
+                { x: 10, y: 10 },
+                { x: 9, y: 10 },
+                { x: 8, y: 10 },
+            ];
+            direction = { x: 1, y: 0 };
+            nextDirection = { x: 1, y: 0 };
+            score = 0;
+            level = 1;
+            frameCount = 0;
+            bonusFood = null;
+            baseSpeed = parseInt(diffSelect.value);
+            currentSpeed = baseSpeed;
+            scoreEl.textContent = '0';
+            levelEl.textContent = '1';
+            spawnFood();
+        }
+
+        function spawnFood() {
+            let pos;
+            do {
+                pos = {
+                    x: Math.floor(Math.random() * COLS),
+                    y: Math.floor(Math.random() * ROWS),
+                };
+            } while (snake.some(s => s.x === pos.x && s.y === pos.y));
+            food = pos;
+        }
+
+        function spawnBonusFood() {
+            let pos;
+            do {
+                pos = {
+                    x: Math.floor(Math.random() * COLS),
+                    y: Math.floor(Math.random() * ROWS),
+                };
+            } while (
+                snake.some(s => s.x === pos.x && s.y === pos.y) ||
+                (food.x === pos.x && food.y === pos.y)
+            );
+            bonusFood = { ...pos, timer: 100 };
+        }
+
+        function update() {
+            if (!running || paused) return;
+
+            frameCount++;
+
+            // Update bonus food timer
+            if (bonusFood) {
+                bonusFood.timer--;
+                if (bonusFood.timer <= 0) bonusFood = null;
+            }
+
+            // Spawn bonus food occasionally
+            if (!bonusFood && frameCount % 80 === 0 && Math.random() < 0.4) {
+                spawnBonusFood();
+            }
+
+            direction = { ...nextDirection };
+
+            const head = {
+                x: snake[0].x + direction.x,
+                y: snake[0].y + direction.y,
+            };
+
+            // Wall collision
+            if (head.x < 0 || head.x >= COLS || head.y < 0 || head.y >= ROWS) {
+                gameOver();
+                return;
+            }
+
+            // Self collision
+            if (snake.some(s => s.x === head.x && s.y === head.y)) {
+                gameOver();
+                return;
+            }
+
+            snake.unshift(head);
+
+            // Check food
+            let grew = false;
+            if (head.x === food.x && head.y === food.y) {
+                score += 10 * level;
+                grew = true;
+                spawnFood();
+                updateLevel();
+            } else if (bonusFood && head.x === bonusFood.x && head.y === bonusFood.y) {
+                score += 50 * level;
+                grew = true;
+                bonusFood = null;
+                updateLevel();
+            }
+
+            if (!grew) snake.pop();
+
+            scoreEl.textContent = score;
+            if (score > highScore) {
+                highScore = score;
+                highScoreEl.textContent = highScore;
+                localStorage.setItem('snakeHighScore', highScore);
+            }
+        }
+
+        function updateLevel() {
+            const newLevel = Math.floor(score / 100) + 1;
+            if (newLevel !== level) {
+                level = newLevel;
+                levelEl.textContent = level;
+                currentSpeed = Math.max(40, baseSpeed - (level - 1) * 8);
+                clearInterval(gameLoop);
+                gameLoop = setInterval(tick, currentSpeed);
+            }
+        }
+
+        function draw() {
+            // Background
+            ctx.fillStyle = COLORS.grid;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Grid lines
+            ctx.strokeStyle = COLORS.gridLine;
+            ctx.lineWidth = 0.5;
+            for (let x = 0; x <= canvas.width; x += GRID) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y <= canvas.height; y += GRID) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+
+            // Food
+            drawFood(food.x, food.y, COLORS.food, frameCount);
+
+            // Bonus food
+            if (bonusFood) {
+                const alpha = bonusFood.timer < 30 ? bonusFood.timer / 30 : 1;
+                drawBonusFood(bonusFood.x, bonusFood.y, alpha);
+            }
+
+            // Snake
+            for (let i = snake.length - 1; i >= 0; i--) {
+                const seg = snake[i];
+                const t = i / snake.length;
+                if (i === 0) {
+                    ctx.fillStyle = COLORS.snakeHead;
+                } else {
+                    const r = 56, g = 178, b = 172;
+                    const factor = 0.4 + 0.6 * (1 - t);
+                    ctx.fillStyle = `rgb(${Math.floor(r*factor)}, ${Math.floor(g*factor)}, ${Math.floor(b*factor)})`;
+                }
+                const padding = i === 0 ? 1 : 2;
+                ctx.beginPath();
+                roundRect(ctx,
+                    seg.x * GRID + padding,
+                    seg.y * GRID + padding,
+                    GRID - padding * 2,
+                    GRID - padding * 2,
+                    i === 0 ? 4 : 3
+                );
+                ctx.fill();
+
+                // Snake eyes
+                if (i === 0) {
+                    drawEyes(seg, direction);
+                }
+            }
+        }
+
+        function drawFood(x, y, color, frame) {
+            const cx = x * GRID + GRID / 2;
+            const cy = y * GRID + GRID / 2;
+            const pulse = 1 + 0.15 * Math.sin(frame * 0.15);
+            const r = (GRID / 2 - 3) * pulse;
+
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Shine
+            ctx.fillStyle = 'rgba(255,255,255,0.3)';
+            ctx.beginPath();
+            ctx.arc(cx - r * 0.3, cy - r * 0.3, r * 0.3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawBonusFood(x, y, alpha) {
+            const cx = x * GRID + GRID / 2;
+            const cy = y * GRID + GRID / 2;
+            ctx.globalAlpha = alpha;
+            ctx.shadowColor = COLORS.bonusFood;
+            ctx.shadowBlur = 15;
+            ctx.fillStyle = COLORS.bonusFood;
+            ctx.beginPath();
+            // Star shape
+            for (let i = 0; i < 5; i++) {
+                const angle = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+                const r = GRID / 2 - 2;
+                const ir = r * 0.45;
+                if (i === 0) ctx.moveTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
+                else ctx.lineTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
+                const innerAngle = angle + (2 * Math.PI) / 10;
+                ctx.lineTo(cx + ir * Math.cos(innerAngle), cy + ir * Math.sin(innerAngle));
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.globalAlpha = 1;
+        }
+
+        function drawEyes(seg, dir) {
+            const cx = seg.x * GRID + GRID / 2;
+            const cy = seg.y * GRID + GRID / 2;
+            const eyeOffset = 3;
+            let eye1, eye2;
+
+            if (dir.x === 1) {
+                eye1 = { x: cx + 3, y: cy - eyeOffset };
+                eye2 = { x: cx + 3, y: cy + eyeOffset };
+            } else if (dir.x === -1) {
+                eye1 = { x: cx - 3, y: cy - eyeOffset };
+                eye2 = { x: cx - 3, y: cy + eyeOffset };
+            } else if (dir.y === -1) {
+                eye1 = { x: cx - eyeOffset, y: cy - 3 };
+                eye2 = { x: cx + eyeOffset, y: cy - 3 };
+            } else {
+                eye1 = { x: cx - eyeOffset, y: cy + 3 };
+                eye2 = { x: cx + eyeOffset, y: cy + 3 };
+            }
+
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(eye1.x, eye1.y, 2.5, 0, Math.PI * 2);
+            ctx.arc(eye2.x, eye2.y, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(eye1.x + dir.x * 0.8, eye1.y + dir.y * 0.8, 1.2, 0, Math.PI * 2);
+            ctx.arc(eye2.x + dir.x * 0.8, eye2.y + dir.y * 0.8, 1.2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function roundRect(ctx, x, y, w, h, r) {
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y);
+            ctx.arcTo(x + w, y, x + w, y + r, r);
+            ctx.lineTo(x + w, y + h - r);
+            ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+            ctx.lineTo(x + r, y + h);
+            ctx.arcTo(x, y + h, x, y + h - r, r);
+            ctx.lineTo(x, y + r);
+            ctx.arcTo(x, y, x + r, y, r);
+            ctx.closePath();
+        }
+
+        function tick() {
+            update();
+            draw();
+        }
+
+        function startGame() {
+            if (gameLoop) clearInterval(gameLoop);
+            running = true;
+            paused = false;
+            initGame();
+            overlay.classList.add('hidden');
+            startBtn.textContent = '重新开始';
+            pauseBtn.disabled = false;
+            pauseBtn.textContent = '暂停';
+            gameLoop = setInterval(tick, currentSpeed);
+        }
+
+        function gameOver() {
+            running = false;
+            clearInterval(gameLoop);
+            overlay.classList.remove('hidden');
+            overlayTitle.textContent = '游戏结束';
+            overlayMsg.textContent = `得分: ${score}  |  按空格键重新开始`;
+            pauseBtn.disabled = true;
+        }
+
+        function togglePause() {
+            if (!running) return;
+            paused = !paused;
+            pauseBtn.textContent = paused ? '继续' : '暂停';
+            if (paused) {
+                overlay.classList.remove('hidden');
+                overlayTitle.textContent = '已暂停';
+                overlayMsg.textContent = '按空格键继续';
+            } else {
+                overlay.classList.add('hidden');
+            }
+        }
+
+        // Input handling
+        document.addEventListener('keydown', (e) => {
+            switch (e.key) {
+                case 'ArrowUp':
+                case 'w':
+                case 'W':
+                    if (direction.y !== 1) nextDirection = { x: 0, y: -1 };
+                    break;
+                case 'ArrowDown':
+                case 's':
+                case 'S':
+                    if (direction.y !== -1) nextDirection = { x: 0, y: 1 };
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                case 'A':
+                    if (direction.x !== 1) nextDirection = { x: -1, y: 0 };
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                case 'D':
+                    if (direction.x !== -1) nextDirection = { x: 1, y: 0 };
+                    break;
+                case ' ':
+                    e.preventDefault();
+                    if (!running) {
+                        startGame();
+                    } else {
+                        togglePause();
+                    }
+                    break;
+            }
+        });
+
+        startBtn.addEventListener('click', startGame);
+        pauseBtn.addEventListener('click', togglePause);
+
+        // Initial draw
+        initGame();
+        draw();
+    </script>
+</body>
+</html>
